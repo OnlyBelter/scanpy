@@ -3,7 +3,7 @@
 import collections.abc as cabc
 from itertools import product
 from collections import OrderedDict
-from typing import Optional, Union, Mapping  # Special
+from typing import Optional, Union, Mapping, Literal  # Special
 from typing import Sequence, Collection, Iterable  # ABCs
 from typing import Tuple, List  # Classes
 
@@ -24,7 +24,6 @@ from .. import get
 from .. import logging as logg
 from .._settings import settings
 from .._utils import sanitize_anndata, _doc_params, _check_use_raw
-from .._compat import Literal
 from . import _utils
 from ._utils import scatter_base, scatter_group, setup_axes, check_colornorm
 from ._utils import ColorLike, _FontWeight, _FontSize
@@ -121,14 +120,18 @@ def scatter(
     If `show==False` a :class:`~matplotlib.axes.Axes` or a list of it.
     """
     args = locals()
+    if _check_use_raw(adata, use_raw):
+        var_index = adata.raw.var.index
+    else:
+        var_index = adata.var.index
     if basis is not None:
         return _scatter_obs(**args)
     if x is None or y is None:
         raise ValueError('Either provide a `basis` or `x` and `y`.')
     if (
-        (x in adata.obs.keys() or x in adata.var.index)
-        and (y in adata.obs.keys() or y in adata.var.index)
-        and (color is None or color in adata.obs.keys() or color in adata.var.index)
+        (x in adata.obs.keys() or x in var_index)
+        and (y in adata.obs.keys() or y in var_index)
+        and (color is None or color in adata.obs.keys() or color in var_index)
     ):
         return _scatter_obs(**args)
     if (
@@ -459,7 +462,6 @@ def _scatter_obs(
                     all_pos[iname] = centroids[name]
                 else:
                     all_pos[iname] = [np.nan, np.nan]
-            _utils._tmp_cluster_pos = all_pos
             if legend_loc == 'on data export':
                 filename = settings.writedir / 'pos.csv'
                 logg.warning(f'exporting label positions to {filename}')
@@ -517,7 +519,7 @@ def ranking(
     """\
     Plot rankings.
 
-    See, for example, how this is used in pl.pca_ranking.
+    See, for example, how this is used in pl.pca_loadings.
 
     Parameters
     ----------
@@ -592,9 +594,13 @@ def ranking(
             pl.text(ig, score[g], labels[g], **txt_args)
         if include_lowest:
             score_mid = (score[g] + score[neg_indices[0]]) / 2
-            pl.text(len(indices), score_mid, '⋮', **txt_args)
-            for ig, g in enumerate(neg_indices):
-                pl.text(ig + len(indices) + 2, score[g], labels[g], **txt_args)
+            if (len(indices) + len(neg_indices)) < len(order_scores):
+                pl.text(len(indices), score_mid, '⋮', **txt_args)
+                for ig, g in enumerate(neg_indices):
+                    pl.text(ig + len(indices) + 2, score[g], labels[g], **txt_args)
+            else:
+                for ig, g in enumerate(neg_indices):
+                    pl.text(ig + len(indices), score[g], labels[g], **txt_args)
             pl.xticks([])
         pl.title(keys[iscore].replace('_', ' '))
         if n_panels <= 5 or iscore > n_cols:
@@ -1938,7 +1944,7 @@ def _prepare_dataframe(
         categorical.name = groupby[0]
     else:
         # join the groupby values  using "_" to make a new 'category'
-        categorical = obs_tidy[groupby].agg('_'.join, axis=1).astype('category')
+        categorical = obs_tidy[groupby].apply('_'.join, axis=1).astype('category')
         categorical.name = "_".join(groupby)
 
         # preserve category order
@@ -2404,7 +2410,7 @@ def _plot_categories_as_colorblocks(
     labels = []
     label2code = {}  # dictionary of numerical values asigned to each label
     for code, (label, value) in enumerate(
-        obs_tidy.index.value_counts(sort=False).iteritems()
+        obs_tidy.index.value_counts(sort=False).items()
     ):
         ticks.append(value_sum + (value / 2))
         labels.append(label)

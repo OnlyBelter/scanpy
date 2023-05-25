@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, Literal
 import warnings
 
 import numpy as np
@@ -9,7 +9,6 @@ from sklearn.utils import check_random_state, check_array
 from ._utils import get_init_pos_from_paga, _choose_representation
 from .. import logging as logg
 from .._settings import settings
-from .._compat import Literal
 from .._utils import AnyRandom, NeighborsView
 
 
@@ -189,7 +188,8 @@ def umap(
     if method == 'umap':
         # the data matrix X is really only used for determining the number of connected components
         # for the init condition in the UMAP embedding
-        n_epochs = 0 if maxiter is None else maxiter
+        default_epochs = 500 if neighbors['connectivities'].shape[0] <= 10000 else 200
+        n_epochs = default_epochs if maxiter is None else maxiter
         X_umap = simplicial_set_embedding(
             X,
             neighbors['connectivities'].tocoo(),
